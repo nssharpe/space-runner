@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Runner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      color: #fff;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #gameCanvas {
+      display: block;
+      position: absolute;
+    }
+
+    #ui {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 28px 32px;
+      background: rgba(0, 0, 24, 0.93);
+      border: 2px solid #00FFFF;
+      border-radius: 12px;
+      min-width: 300px;
+      max-width: 400px;
+      pointer-events: auto;
+    }
+    .screen.active { display: flex; }
+
+    .screen h1 {
+      font-size: 2.2em;
+      color: #00FFFF;
+      text-shadow: 0 0 18px #00FFFF;
+      letter-spacing: 4px;
+      text-align: center;
+      line-height: 1.1;
+    }
+
+    .screen h2 {
+      font-size: 1.4em;
+      color: #FF6600;
+      letter-spacing: 2px;
+      text-align: center;
+    }
+
+    .screen p {
+      font-size: 0.85em;
+      color: #999;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .score-display {
+      font-size: 2.2em;
+      color: #FFD700;
+      text-shadow: 0 0 10px #FFD700;
+      letter-spacing: 2px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      background: transparent;
+      border: 2px solid #00FFFF;
+      color: #00FFFF;
+      font-family: 'Courier New', monospace;
+      font-size: 1em;
+      cursor: pointer;
+      border-radius: 6px;
+      letter-spacing: 2px;
+      transition: background 0.12s, color 0.12s;
+    }
+    .btn:hover:not(:disabled) { background: #00FFFF; color: #000; }
+    .btn:disabled { border-color: #333; color: #444; cursor: default; }
+    .btn.muted { border-color: #444; color: #555; font-size: 0.8em; }
+    .btn.muted:hover:not(:disabled) { background: #444; color: #ccc; }
+
+    #leaderboardTable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82em;
+    }
+    #leaderboardTable th {
+      color: #00FFFF;
+      border-bottom: 1px solid #00FFFF33;
+      padding: 4px 8px;
+      text-align: left;
+    }
+    #leaderboardTable td { padding: 3px 8px; color: #bbb; }
+    #leaderboardTable tr.me td { color: #FFD700; }
+
+    #submitMsg {
+      font-size: 0.8em;
+      color: #88FF88;
+      min-height: 1em;
+      text-align: center;
+    }
+
+    #usernameModal, #breakModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #usernameModal.active, #breakModal.active { display: flex; }
+
+    #breakTimerDisplay {
+      font-size: 3em;
+      color: #FFD700;
+      text-shadow: 0 0 16px #FFD700;
+      letter-spacing: 4px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .modal-box {
+      background: rgba(0, 0, 24, 0.98);
+      border: 2px solid #00FFFF;
+      border-radius: 12px;
+      padding: 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 280px;
+    }
+    .modal-box h2 { color: #00FFFF; letter-spacing: 3px; }
+    .modal-box p  { font-size: 0.82em; color: #888; text-align: center; }
+
+    #usernameInput {
+      background: #000;
+      border: 1px solid #00FFFF66;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1em;
+      padding: 10px 14px;
+      border-radius: 6px;
+      width: 100%;
+      text-align: center;
+      outline: none;
+    }
+    #usernameInput:focus { border-color: #00FFFF; }
+
+    #usernameError { color: #FF5555; font-size: 0.8em; min-height: 1em; }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui">
+  <!-- Start Screen -->
+  <div id="startScreen" class="screen">
+    <h1>SPACE<br>RUNNER</h1>
+    <p id="pilotName" style="color:#00FFFF; font-size:0.9em">Pilot: —</p>
+    <p id="bestDisplay" style="color:#FFD700; font-size:0.9em">Best: 0s</p>
+    <p>
+      ↑ ↓ &nbsp; Move ship<br>
+      ← → &nbsp; Shift asteroid field<br>
+      <span style="color:#888">Gray platforms push you down</span><br>
+      <span style="color:#FF6600">Orange hazards deal damage ♥</span><br>
+      <span style="color:#666">Don't fall off the bottom!</span>
+    </p>
+    <button class="btn" id="playBtn">LAUNCH</button>
+    <button class="btn muted" id="changeNameBtn">change pilot name</button>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameOverScreen" class="screen">
+    <h2>SHIP DESTROYED</h2>
+    <div class="score-display" id="finalScore">0s</div>
+    <div id="submitMsg"></div>
+    <button class="btn" id="submitBtn">SUBMIT SCORE</button>
+    <table id="leaderboardTable">
+      <thead><tr><th>#</th><th>Pilot</th><th>Time</th></tr></thead>
+      <tbody id="lbBody"><tr><td colspan="3" style="color:#444;text-align:center">—</td></tr></tbody>
+    </table>
+    <button class="btn" id="retryBtn">TRY AGAIN</button>
+  </div>
+</div>
+
+<!-- Username Modal -->
+<div id="usernameModal">
+  <div class="modal-box">
+    <h2>PILOT NAME</h2>
+    <p>What should we call you?</p>
+    <input type="text" id="usernameInput" maxlength="20" placeholder="Enter name..." autocomplete="off" spellcheck="false">
+    <div id="usernameError"></div>
+    <button class="btn" id="nameConfirmBtn">CONFIRM</button>
+  </div>
+</div>
+
+<!-- Break Timer Modal -->
+<div id="breakModal">
+  <div class="modal-box">
+    <h2 style="color:#FFD700; text-shadow:0 0 12px #FFD700">⚡ RECHARGING ⚡</h2>
+    <p>Battery low! Perhaps you should take a movement break! 😉</p>
+    <div id="breakTimerDisplay">60</div>
+    <p style="color:#444; font-size:0.75em">next launch in...</p>
+  </div>
+</div>
+
+<!-- Firebase compat SDK (works as plain script tags, no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+'use strict';
+
+// ===== CONFIG =====
+
+const CANVAS_W = 480;
+const CANVAS_H = 720;
+const PLAYER_X = CANVAS_W / 2;   // player x is always fixed at horizontal center
+
+const CFG = {
+  player: {
+    w: 32, h: 40,
+    speed: 4,       // px/frame for up/down movement
+    maxHp: 3,
+    iFrames: 90,
+  },
+  scroll: {
+    initial:   2,
+    increment: 0.0005,  // speed added per frame automatically
+    max:       12,
+  },
+  spawn: {
+    intervalInitial:   90,
+    intervalMin:       30,
+    intervalDecrement: 0.01,
+  },
+  shift: { speed: 3 },
+  stars:  { count: 80 },
+  death:  { frames: 40 },
+};
+
+const PUSH_H       = 18;
+const DMG_SZ       = 44;
+const PLAYER_HIT_R = 11;
+
+
+// ===== FIREBASE =====
+
+// TODO: Replace these placeholder values with your real Firebase project config.
+// Get it from: https://console.firebase.google.com → your project → Project Settings → Web Apps
+// Then set Firestore security rules (see README / plan file for the rules).
+const firebaseConfig = {
+  apiKey:            'YOUR_API_KEY',
+  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
+  projectId:         'YOUR_PROJECT_ID',
+  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
+  messagingSenderId: 'YOUR_SENDER_ID',
+  appId:             'YOUR_APP_ID',
+};
+
+let db = null;
+const FB_CONFIGURED = firebaseConfig.apiKey !== 'YOUR_API_KEY';
+
+if (FB_CONFIGURED) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  } catch (e) {
+    console.warn('Firebase init failed:', e);
+  }
+}
+
+async function fbSubmitScore(name, score) {
+  if (!db) return false;
+  try {
+    await db.collection('leaderboard').add({
+      username: name,
+      score: Math.floor(score),
+      timestamp: Date.now(),
+    });
+    return true;
+  } catch (e) {
+    console.warn('Score submit failed:', e);
+    return false;
+  }
+}
+
+async function fbFetchLeaderboard() {
+  if (!db) return null;
+  try {
+    const snap = await db.collection('leaderboard')
+      .orderBy('score', 'desc')
+      .limit(10)
+      .get();
+    return snap.docs.map(d => d.data());
+  } catch (e) {
+    console.warn('Leaderboard fetch failed:', e);
+    return null;
+  }
+}
+
+
+// ===== CANVAS SETUP =====
+
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+canvas.width  = CANVAS_W;
+canvas.height = CANVAS_H;
+
+function resizeCanvas() {
+  const scale = Math.min(window.innerWidth / CANVAS_W, window.innerHeight / CANVAS_H);
+  const w = CANVAS_W * scale;
+  const h = CANVAS_H * scale;
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.style.left   = ((window.innerWidth  - w) / 2) + 'px';
+  canvas.style.top    = ((window.innerHeight - h) / 2) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+
+// ===== GLOBAL GAME STATE =====
+
+let gamePhase        = 'start';
+let username         = '';
+let bestScore        = 0;
+let sessionSubmitted = false;
+let attemptCount     = 0;   // incremented on each death; triggers break every 5
+
+let S = {};
+
+function resetGameState() {
+  S = {
+    player: {
+      y:        130,    // vertical position (moves with ↑/↓)
+      vy:       0,      // vertical knockback velocity (decays each frame)
+      hp:       CFG.player.maxHp,
+      iFrames:  0,
+    },
+    obstacles:     [],
+    stars:         generateStars(),
+    scrollSpeed:   CFG.scroll.initial,
+    spawnInterval: CFG.spawn.intervalInitial,
+    score:         0,
+    frameCount:    0,
+    camera:        0,   // field-x shown at screen left edge
+    keys:          {},
+    deathX:        PLAYER_X,
+    deathY:        CANVAS_H / 2,
+    deathFrame:    0,
+  };
+}
+
+
+// ===== STARS =====
+
+function generateStars() {
+  return Array.from({ length: CFG.stars.count }, () => ({
+    x:     Math.random() * CANVAS_W,
+    y:     Math.random() * CANVAS_H,
+    r:     Math.random() * 1.5 + 0.3,
+    speed: Math.random() * 0.4 + 0.1,
+  }));
+}
+
+function updateStars() {
+  for (const s of S.stars) {
+    s.y += s.speed;
+    if (s.y > CANVAS_H) { s.y = 0; s.x = Math.random() * CANVAS_W; }
+  }
+}
+
+function drawStars() {
+  ctx.fillStyle = '#ffffff';
+  for (const s of S.stars) {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+
+// ===== PLAYER DRAWING =====
+
+function drawPlayer() {
+  const p  = S.player;
+  const pw = CFG.player.w;
+  const ph = CFG.player.h;
+
+  // Flicker while invincible: hide every other 4-frame block
+  if (p.iFrames > 0 && Math.floor(p.iFrames / 4) % 2 === 1) return;
+
+  ctx.save();
+  ctx.translate(PLAYER_X, S.player.y);
+
+  // Exhaust flame (alternates size for animation)
+  const flameH = (S.frameCount % 8 < 4) ? 15 : 9;
+  const grad = ctx.createLinearGradient(0, ph / 2, 0, ph / 2 + flameH);
+  grad.addColorStop(0, 'rgba(255,140,0,0.9)');
+  grad.addColorStop(1, 'rgba(255,60,0,0)');
+  ctx.beginPath();
+  ctx.moveTo(-pw / 4, ph / 2 - 3);
+  ctx.lineTo( pw / 4, ph / 2 - 3);
+  ctx.lineTo(0, ph / 2 + flameH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Ship body: triangle pointing up with notched tail
+  ctx.beginPath();
+  ctx.moveTo(0,       -ph / 2);       // nose tip
+  ctx.lineTo(-pw / 2,  ph / 2);       // left wing tip
+  ctx.lineTo(-pw / 6,  ph / 5);       // left tail notch
+  ctx.lineTo(0,        ph / 3);        // center tail
+  ctx.lineTo( pw / 6,  ph / 5);       // right tail notch
+  ctx.lineTo( pw / 2,  ph / 2);       // right wing tip
+  ctx.closePath();
+  ctx.fillStyle   = '#00DDDD';
+  ctx.fill();
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Cockpit
+  ctx.beginPath();
+  ctx.arc(0, -ph / 7, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+
+// ===== OBSTACLE FACTORY & DRAWING =====
+
+// Obstacles store fieldX (world-space x) so the camera can shift without touching each obstacle.
+// Screen x = obs.fieldX - S.camera
+function mkObs(type, fieldX, y, w, h) {
+  return { type, fieldX, y, width: w, height: h };
+}
+
+function drawPushObs(o) {
+  const sx = o.fieldX - S.camera;
+  ctx.fillStyle   = '#666666';
+  ctx.strokeStyle = '#AAAAAA';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.roundRect(sx, o.y, o.width, o.height, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle    = '#CCCCCC';
+  ctx.font         = 'bold 13px monospace';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('↓', sx + o.width / 2, o.y + o.height / 2);
+}
+
+function drawDamageObs(o) {
+  const sx  = o.fieldX - S.camera;
+  const cx  = sx + o.width  / 2;
+  const cy  = o.y + o.height / 2;
+  const ro  = Math.min(o.width, o.height) / 2;
+  const ri  = ro * 0.48;
+  const pts = 6;
+
+  ctx.beginPath();
+  for (let i = 0; i < pts * 2; i++) {
+    const angle = (i * Math.PI / pts) - Math.PI / 2;
+    const r  = i % 2 === 0 ? ro : ri;
+    const vx = cx + r * Math.cos(angle);
+    const vy = cy + r * Math.sin(angle);
+    i === 0 ? ctx.moveTo(vx, vy) : ctx.lineTo(vx, vy);
+  }
+  ctx.closePath();
+  ctx.fillStyle   = '#AA2200';
+  ctx.fill();
+  ctx.strokeStyle = '#FF6600';
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  ctx.fillStyle    = '#FFD700';
+  ctx.font         = '14px monospace';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚡', cx, cy);
+}
+
+
+// ===== OBSTACLE ROW PATTERNS =====
+// Each entry: { type, xFrac (left edge as fraction of CANVAS_W), wFrac (width fraction) }
+
+const PATTERNS = [
+  // single wide platform
+  [{ type: 'push',   xFrac: 0.12, wFrac: 0.76 }],
+  // two damage, sides
+  [{ type: 'damage', xFrac: 0.04, wFrac: 0.20 },
+   { type: 'damage', xFrac: 0.76, wFrac: 0.20 }],
+  // platform left + damage right
+  [{ type: 'push',   xFrac: 0.04, wFrac: 0.42 },
+   { type: 'damage', xFrac: 0.62, wFrac: 0.20 }],
+  // damage left + platform right
+  [{ type: 'damage', xFrac: 0.14, wFrac: 0.20 },
+   { type: 'push',   xFrac: 0.44, wFrac: 0.46 }],
+  // three damage with gaps
+  [{ type: 'damage', xFrac: 0.02, wFrac: 0.20 },
+   { type: 'damage', xFrac: 0.40, wFrac: 0.20 },
+   { type: 'damage', xFrac: 0.78, wFrac: 0.20 }],
+  // single damage center
+  [{ type: 'damage', xFrac: 0.38, wFrac: 0.24 }],
+  // platform with damage on one side
+  [{ type: 'push',   xFrac: 0.05, wFrac: 0.52 },
+   { type: 'damage', xFrac: 0.70, wFrac: 0.20 }],
+  // two platforms with gap in middle
+  [{ type: 'push',   xFrac: 0.02, wFrac: 0.30 },
+   { type: 'push',   xFrac: 0.68, wFrac: 0.30 }],
+  // damage flanking a platform
+  [{ type: 'damage', xFrac: 0.02, wFrac: 0.18 },
+   { type: 'push',   xFrac: 0.26, wFrac: 0.48 },
+   { type: 'damage', xFrac: 0.80, wFrac: 0.18 }],
+];
+
+function spawnRow() {
+  const pattern = PATTERNS[Math.floor(Math.random() * PATTERNS.length)];
+  // Spawn three side-by-side copies of the pattern (left, center, right of viewport).
+  // This guarantees obstacles exist no matter how far the player has shifted the field.
+  for (const tileOffset of [-CANVAS_W, 0, CANVAS_W]) {
+    for (const def of pattern) {
+      const w      = def.wFrac * CANVAS_W;
+      const h      = def.type === 'push' ? PUSH_H : DMG_SZ;
+      const fieldX = S.camera + tileOffset + def.xFrac * CANVAS_W;
+      S.obstacles.push(mkObs(def.type, fieldX, -h, w, h));
+    }
+  }
+}
+
+
+// ===== COLLISION =====
+
+function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function checkCollisions() {
+  const p  = S.player;
+  const pw = CFG.player.w;
+  const ph = CFG.player.h;
+  const ppx = PLAYER_X - pw / 2;
+  const ppy = p.y       - ph / 2;
+
+  const toRemove = [];
+
+  for (let i = 0; i < S.obstacles.length; i++) {
+    const obs = S.obstacles[i];
+    const sx  = obs.fieldX - S.camera;
+
+    if (obs.type === 'push') {
+      if (!aabbOverlap(ppx, ppy, pw, ph, sx, obs.y, obs.width, obs.height)) continue;
+      // Platform scrolls down from above — push player down when above player centre
+      if (obs.y + obs.height / 2 < p.y) {
+        p.y  = obs.y + obs.height + ph / 2;
+        p.vy = 0;
+      }
+
+    } else if (obs.type === 'damage') {
+      const ocx  = sx + obs.width  / 2;
+      const ocy  = obs.y + obs.height / 2;
+      const obsR = Math.min(obs.width, obs.height) / 2 * 0.55;
+      const dx   = PLAYER_X - ocx;
+      const dy   = p.y      - ocy;
+      if (dx * dx + dy * dy >= (PLAYER_HIT_R + obsR) * (PLAYER_HIT_R + obsR)) continue;
+
+      if (p.iFrames === 0) {
+        p.hp     -= 1;
+        p.iFrames = CFG.player.iFrames;
+        p.vy      = dy < 0 ? -5 : 5;
+        toRemove.push(i);
+      }
+    }
+  }
+
+  for (let i = toRemove.length - 1; i >= 0; i--) {
+    S.obstacles.splice(toRemove[i], 1);
+  }
+}
+
+
+// ===== INPUT =====
+
+document.addEventListener('keydown', e => {
+  S.keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { S.keys[e.key] = false; });
+
+
+// ===== UPDATE =====
+
+function update() {
+  const p = S.player;
+
+  S.frameCount++;
+  S.score += 1 / 60;
+
+  // Scroll speed ramps up automatically over time
+  S.scrollSpeed = Math.min(
+    CFG.scroll.initial + S.frameCount * CFG.scroll.increment,
+    CFG.scroll.max
+  );
+
+  // ↑/↓ move the player vertically
+  if (S.keys['ArrowUp'])   p.y -= CFG.player.speed;
+  if (S.keys['ArrowDown']) p.y += CFG.player.speed;
+
+  // Knockback velocity from damage hits (decays each frame)
+  p.y  += p.vy;
+  p.vy *= 0.80;
+  if (Math.abs(p.vy) < 0.2) p.vy = 0;
+
+  // Clamp: can't fly off the top edge
+  p.y = Math.max(CFG.player.h / 2, p.y);
+
+  // ←/→ shift the camera (moves the obstacle field left/right)
+  if (S.keys['ArrowLeft'])  S.camera += CFG.shift.speed;
+  if (S.keys['ArrowRight']) S.camera -= CFG.shift.speed;
+
+  updateStars();
+
+  // Obstacles scroll downward
+  for (const obs of S.obstacles) obs.y += S.scrollSpeed;
+
+  // Remove obstacles off the bottom or far outside the viewport horizontally
+  S.obstacles = S.obstacles.filter(obs => {
+    const sx = obs.fieldX - S.camera;
+    return obs.y < CANVAS_H + 80
+        && sx + obs.width > -(CANVAS_W + 100)
+        && sx              < CANVAS_W * 2 + 100;
+  });
+
+  // Difficulty: tighten spawn interval
+  S.spawnInterval = Math.max(
+    CFG.spawn.intervalInitial - S.frameCount * CFG.spawn.intervalDecrement,
+    CFG.spawn.intervalMin
+  );
+  if (S.frameCount % Math.round(S.spawnInterval) === 0) spawnRow();
+
+  checkCollisions();
+
+  if (p.iFrames > 0) p.iFrames--;
+
+  // Death: pushed off bottom OR out of HP
+  if (p.y + CFG.player.h / 2 > CANVAS_H || p.hp <= 0) {
+    S.deathX     = PLAYER_X;
+    S.deathY     = Math.min(p.y, CANVAS_H - 10);
+    S.deathFrame = 0;
+    setPhase('dead');
+  }
+}
+
+
+// ===== RENDER =====
+
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  g.addColorStop(0, '#00000F');
+  g.addColorStop(1, '#00071A');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+}
+
+function drawHUD() {
+  const p = S.player;
+
+  // Score (top center)
+  ctx.font         = 'bold 30px monospace';
+  ctx.fillStyle    = '#FFFFFF';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(Math.floor(S.score) + 's', CANVAS_W / 2, 12);
+
+  // Hearts (top left)
+  ctx.font         = '22px monospace';
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'top';
+  for (let i = 0; i < CFG.player.maxHp; i++) {
+    ctx.fillStyle = i < p.hp ? '#FF3333' : '#2A2A2A';
+    ctx.fillText('♥', 12 + i * 30, 14);
+  }
+}
+
+function drawDeathAnim() {
+  const t  = S.deathFrame / CFG.death.frames;  // 0 → 1
+  const a  = 1 - t;
+
+  ctx.strokeStyle = `rgba(255,120,0,${a})`;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.arc(S.deathX, S.deathY, t * 90, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(255,255,255,${a * 0.7})`;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.arc(S.deathX, S.deathY, t * 45, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function render() {
+  drawBackground();
+  drawStars();
+
+  for (const obs of S.obstacles) {
+    obs.type === 'push' ? drawPushObs(obs) : drawDamageObs(obs);
+  }
+
+  if (gamePhase === 'playing') {
+    drawPlayer();
+    drawHUD();
+  } else if (gamePhase === 'dead') {
+    drawDeathAnim();
+  }
+}
+
+
+// ===== GAME LOOP =====
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+
+  if (gamePhase === 'playing') {
+    update();
+    render();
+  } else if (gamePhase === 'dead') {
+    // Obstacles still scroll during death animation
+    for (const obs of S.obstacles) obs.y += S.scrollSpeed;
+    updateStars();
+    S.deathFrame++;
+    render();
+    if (S.deathFrame >= CFG.death.frames) setPhase('gameover');
+  } else {
+    // Start / gameover screens — animate stars in background
+    updateStars();
+    render();
+  }
+}
+
+
+// ===== SCREEN MANAGEMENT =====
+
+function setPhase(phase) {
+  gamePhase = phase;
+  document.getElementById('startScreen').classList.remove('active');
+  document.getElementById('gameOverScreen').classList.remove('active');
+
+  if (phase === 'start') {
+    document.getElementById('pilotName').textContent = 'Pilot: ' + username;
+    document.getElementById('bestDisplay').textContent = 'Best: ' + bestScore + 's';
+    document.getElementById('startScreen').classList.add('active');
+
+  } else if (phase === 'gameover') {
+    // Count this death; break screen fires every 5
+    attemptCount++;
+    localStorage.setItem('spaceRunnerAttempts', attemptCount);
+
+    const finalSec = Math.floor(S.score);
+    if (finalSec > bestScore) {
+      bestScore = finalSec;
+      localStorage.setItem('spaceRunnerBest', bestScore);
+    }
+    sessionSubmitted = false;
+    document.getElementById('finalScore').textContent = finalSec + 's';
+    document.getElementById('submitMsg').textContent  = '';
+    document.getElementById('submitBtn').disabled     = false;
+    document.getElementById('gameOverScreen').classList.add('active');
+    loadLeaderboard();
+  }
+}
+
+async function loadLeaderboard() {
+  const body = document.getElementById('lbBody');
+  body.innerHTML = '<tr><td colspan="3" style="color:#444;text-align:center">Loading…</td></tr>';
+
+  const rows = await fbFetchLeaderboard();
+  if (rows === null) {
+    body.innerHTML = '<tr><td colspan="3" style="color:#444;text-align:center">Leaderboard not set up yet</td></tr>';
+    return;
+  }
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="3" style="color:#555;text-align:center">No scores yet — be first!</td></tr>';
+    return;
+  }
+
+  const myScore = Math.floor(S.score);
+  body.innerHTML = '';
+  rows.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    if (row.username === username && row.score === myScore) tr.classList.add('me');
+    tr.innerHTML = `<td>${i + 1}</td><td>${esc(row.username)}</td><td>${row.score}s</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== BREAK SCREEN =====
+
+function showBreakScreen(onDone) {
+  const modal   = document.getElementById('breakModal');
+  const display = document.getElementById('breakTimerDisplay');
+  let remaining = 60;
+  display.textContent = remaining;
+  modal.classList.add('active');
+
+  const tick = setInterval(() => {
+    remaining--;
+    display.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(tick);
+      modal.classList.remove('active');
+      onDone();
+    }
+  }, 1000);
+}
+
+function startGame() {
+  // Every 5 deaths show a 60-second movement break
+  if (attemptCount > 0 && attemptCount % 5 === 0) {
+    showBreakScreen(() => {
+      resetGameState();
+      setPhase('playing');
+    });
+  } else {
+    resetGameState();
+    setPhase('playing');
+  }
+}
+
+
+// ===== USERNAME MODAL =====
+
+function showNameModal(onConfirm) {
+  const modal = document.getElementById('usernameModal');
+  const input = document.getElementById('usernameInput');
+  const errEl = document.getElementById('usernameError');
+  input.value      = '';
+  errEl.textContent = '';
+  modal.classList.add('active');
+  setTimeout(() => input.focus(), 50);
+
+  function confirm() {
+    const val = input.value.trim();
+    if (!val)           { errEl.textContent = 'Please enter a name.'; return; }
+    if (val.length > 20){ errEl.textContent = 'Max 20 characters.'; return; }
+    if (!/^[A-Za-z0-9 _-]+$/.test(val)) {
+      errEl.textContent = 'Letters, numbers, spaces, _ - only.';
+      return;
+    }
+    username = val;
+    localStorage.setItem('spaceRunnerUsername', username);
+    modal.classList.remove('active');
+    onConfirm();
+  }
+
+  document.getElementById('nameConfirmBtn').onclick = confirm;
+  input.onkeydown = e => { if (e.key === 'Enter') confirm(); };
+}
+
+
+// ===== BUTTON WIRING =====
+
+document.getElementById('playBtn').addEventListener('click', startGame);
+
+document.getElementById('changeNameBtn').addEventListener('click', () => {
+  showNameModal(() => {
+    document.getElementById('pilotName').textContent = 'Pilot: ' + username;
+  });
+});
+
+document.getElementById('retryBtn').addEventListener('click', startGame);
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  if (sessionSubmitted) return;
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('submitMsg');
+  btn.disabled = true;
+  msg.textContent = 'Submitting…';
+  const ok = await fbSubmitScore(username, S.score);
+  sessionSubmitted = true;
+  if (ok) {
+    msg.textContent = '✓ Score submitted!';
+    loadLeaderboard();
+  } else {
+    msg.textContent = FB_CONFIGURED ? 'Submit failed — check console.' : 'Firebase not configured yet.';
+    msg.style.color = '#FF8888';
+  }
+});
+
+
+// ===== INIT =====
+
+(function init() {
+  bestScore    = parseInt(localStorage.getItem('spaceRunnerBest')    || '0', 10);
+  attemptCount = parseInt(localStorage.getItem('spaceRunnerAttempts') || '0', 10);
+  const savedName = localStorage.getItem('spaceRunnerUsername');
+
+  resetGameState();
+  gameLoop(); // start rendering immediately (stars animate on start screen)
+
+  if (savedName) {
+    username = savedName;
+    setPhase('start');
+  } else {
+    showNameModal(() => setPhase('start'));
+  }
+})();
+
+</script>
+</body>
+</html>
