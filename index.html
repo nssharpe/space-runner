@@ -164,6 +164,72 @@
 
     #usernameError { color: #FF5555; font-size: 0.8em; min-height: 1em; }
 
+    /* ── Mod panel ── */
+    #modPanel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.90);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #modPanel.active { display: flex; }
+    #modPanel .modal-box { min-width: 300px; max-height: 88vh; overflow-y: auto; }
+    #modPanel h2 { color: #FF6600; }
+
+    .mod-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid #FF660033;
+      padding-top: 10px;
+    }
+    .mod-label {
+      color: #FF6600;
+      font-size: 0.68em;
+      letter-spacing: 3px;
+      font-family: 'Courier New', monospace;
+    }
+    .mod-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82em;
+      color: #aaa;
+      font-family: 'Courier New', monospace;
+    }
+    .toggle-btn {
+      padding: 3px 14px;
+      border: 1px solid;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.78em;
+      cursor: pointer;
+      background: transparent;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .toggle-btn.on  { border-color: #00FFFF; color: #00FFFF; }
+    .toggle-btn.off { border-color: #555; color: #555; }
+    .mod-reset-btn {
+      padding: 6px 12px;
+      background: transparent;
+      border: 1px solid #555;
+      color: #888;
+      font-family: 'Courier New', monospace;
+      font-size: 0.72em;
+      cursor: pointer;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+      text-align: left;
+    }
+    .mod-reset-btn:hover { background: #222; color: #ccc; }
+    .mod-reset-btn.danger { border-color: #FF4444; color: #FF4444; }
+    .mod-reset-btn.danger:hover { background: #FF4444; color: #000; }
+
     /* ── Skin shop ── */
     #shopScreen {
       max-height: 88vh;
@@ -275,6 +341,7 @@
     <button class="btn" id="playBtn">LAUNCH</button>
     <button class="btn" id="shopBtn">HANGAR</button>
     <button class="btn muted" id="changeNameBtn">change pilot name</button>
+    <button id="modBtn" style="display:none; padding:6px 18px; background:transparent; border:1px solid #FF6600; color:#FF6600; font-family:'Courier New',monospace; font-size:0.78em; cursor:pointer; border-radius:4px; letter-spacing:2px;">⚙ MOD</button>
   </div>
 
   <!-- Shop Screen -->
@@ -321,6 +388,43 @@
     <input type="text" id="usernameInput" maxlength="20" placeholder="Enter name..." autocomplete="off" spellcheck="false">
     <div id="usernameError"></div>
     <button class="btn" id="nameConfirmBtn">CONFIRM</button>
+  </div>
+</div>
+
+<!-- Mod Panel -->
+<div id="modPanel">
+  <div class="modal-box">
+    <h2>⚙ MOD PANEL</h2>
+    <p style="color:#666; font-size:0.72em; margin-top:-6px">MODkadyn1 access only</p>
+
+    <div class="mod-section">
+      <div class="mod-label">FEATURES</div>
+      <div class="mod-row"><span>Power-ups</span><button class="toggle-btn" data-feature="powerups">ON</button></div>
+      <div class="mod-row"><span>Coins</span><button class="toggle-btn" data-feature="coins">ON</button></div>
+      <div class="mod-row"><span>Break Timer</span><button class="toggle-btn" data-feature="breakTimer">ON</button></div>
+      <div class="mod-row"><span>Hard Mode</span><button class="toggle-btn" data-feature="hardMode">OFF</button></div>
+    </div>
+
+    <div class="mod-section">
+      <div class="mod-label">RESET</div>
+      <button class="mod-reset-btn" id="modResetCoins">Reset coins → 0</button>
+      <button class="mod-reset-btn" id="modResetScore">Reset best score → 0</button>
+      <button class="mod-reset-btn" id="modResetAttempts">Reset attempt count → 0</button>
+      <button class="mod-reset-btn" id="modResetSkins">Reset skins (keep default)</button>
+      <button class="mod-reset-btn danger" id="modResetAll">⚠ Reset everything</button>
+    </div>
+
+    <div class="mod-section">
+      <div class="mod-label">SET COINS</div>
+      <div class="mod-row">
+        <input id="modCoinInput" type="number" min="0" value="0"
+          style="width:90px; background:#000; border:1px solid #555; color:#fff;
+                 font-family:'Courier New',monospace; font-size:0.9em; padding:4px 8px; border-radius:4px;">
+        <button class="mod-reset-btn" id="modSetCoins" style="margin:0">Set</button>
+      </div>
+    </div>
+
+    <button class="btn muted" id="modCloseBtn" style="margin-top:4px">CLOSE</button>
   </div>
 </div>
 
@@ -470,6 +574,32 @@ function resizeCanvas() {
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+
+// ===== GLOBAL GAME STATE =====
+
+// ===== FEATURE FLAGS =====
+
+const FEATURE_DEFAULTS = {
+  powerups:   true,
+  coins:      true,
+  breakTimer: true,
+  hardMode:   false,
+};
+
+let features = { ...FEATURE_DEFAULTS };
+
+function loadFeatures() {
+  for (const key of Object.keys(FEATURE_DEFAULTS)) {
+    const saved = localStorage.getItem('spaceRunnerFeature_' + key);
+    if (saved !== null) features[key] = saved === 'true';
+  }
+}
+
+function saveFeature(key, val) {
+  features[key] = val;
+  localStorage.setItem('spaceRunnerFeature_' + key, String(val));
+}
 
 
 // ===== GLOBAL GAME STATE =====
@@ -936,10 +1066,11 @@ function update() {
   S.frameCount++;
   S.score += 1 / 60;
 
-  // Scroll speed ramps up automatically over time
+  // Scroll speed ramps up automatically over time (2× ramp in hard mode)
+  const hardMult = features.hardMode ? 2 : 1;
   S.scrollSpeed = Math.min(
-    CFG.scroll.initial + S.frameCount * CFG.scroll.increment,
-    CFG.scroll.max
+    CFG.scroll.initial + S.frameCount * CFG.scroll.increment * hardMult,
+    CFG.scroll.max * (features.hardMode ? 1.3 : 1)
   );
 
   // ↑/↓ move the player vertically
@@ -978,15 +1109,15 @@ function update() {
     return c.y < CANVAS_H + 40 && sx > -(CANVAS_W + 50) && sx < CANVAS_W * 2 + 50;
   });
 
-  // Difficulty: tighten spawn interval
+  // Difficulty: tighten spawn interval (2× ramp in hard mode)
   S.spawnInterval = Math.max(
-    CFG.spawn.intervalInitial - S.frameCount * CFG.spawn.intervalDecrement,
-    CFG.spawn.intervalMin
+    CFG.spawn.intervalInitial - S.frameCount * CFG.spawn.intervalDecrement * hardMult,
+    CFG.spawn.intervalMin * (features.hardMode ? 0.7 : 1)
   );
   if (S.frameCount % Math.round(S.spawnInterval) === 0) spawnRow();
 
   // Coin rows spawn independently every ~150 frames
-  if (S.frameCount % 150 === 0) spawnCoinRow();
+  if (features.coins && S.frameCount % 150 === 0) spawnCoinRow();
 
   // Power-ups scroll and get culled
   for (const pu of S.powerups) pu.y += S.scrollSpeed;
@@ -996,7 +1127,7 @@ function update() {
   });
 
   // Spawn a power-up every ~700 frames (rarer)
-  if (S.frameCount > 0 && S.frameCount % 700 === 0) spawnPowerup();
+  if (features.powerups && S.frameCount > 0 && S.frameCount % 700 === 0) spawnPowerup();
 
   // Tick active power-up countdown
   if (S.activePowerup) {
@@ -1186,6 +1317,7 @@ function setPhase(phase) {
     document.getElementById('pilotName').textContent    = 'Pilot: ' + username;
     document.getElementById('bestDisplay').textContent  = 'Best: ' + bestScore + 's';
     document.getElementById('coinsDisplay').textContent = 'Coins: ' + totalCoins;
+    document.getElementById('modBtn').style.display     = username === 'MODkadyn1' ? 'block' : 'none';
     document.getElementById('startScreen').classList.add('active');
 
   } else if (phase === 'gameover') {
@@ -1258,8 +1390,8 @@ function showBreakScreen(onDone) {
 }
 
 function startGame() {
-  // Every 5 deaths show a 60-second movement break
-  if (attemptCount > 0 && attemptCount % 5 === 0) {
+  // Every 5 deaths show a 60-second movement break (if enabled)
+  if (features.breakTimer && attemptCount > 0 && attemptCount % 5 === 0) {
     showBreakScreen(() => {
       resetGameState();
       setPhase('playing');
@@ -1473,6 +1605,84 @@ function setupMobileControls() {
 }
 
 
+// ===== MOD PANEL =====
+
+function renderModPanel() {
+  for (const btn of document.querySelectorAll('.toggle-btn')) {
+    const key = btn.dataset.feature;
+    btn.textContent = features[key] ? 'ON' : 'OFF';
+    btn.className   = 'toggle-btn ' + (features[key] ? 'on' : 'off');
+  }
+}
+
+function openModPanel() {
+  renderModPanel();
+  document.getElementById('modPanel').classList.add('active');
+}
+
+function closeModPanel() {
+  document.getElementById('modPanel').classList.remove('active');
+}
+
+// Toggle buttons
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.feature;
+    saveFeature(key, !features[key]);
+    renderModPanel();
+  });
+});
+
+// Reset buttons
+document.getElementById('modResetCoins').addEventListener('click', () => {
+  if (!confirm('Reset coins to 0?')) return;
+  totalCoins = 0;
+  localStorage.setItem('spaceRunnerCoins', '0');
+  document.getElementById('modCoinInput').value = 0;
+});
+
+document.getElementById('modResetScore').addEventListener('click', () => {
+  if (!confirm('Reset best score to 0?')) return;
+  bestScore = 0;
+  localStorage.setItem('spaceRunnerBest', '0');
+});
+
+document.getElementById('modResetAttempts').addEventListener('click', () => {
+  if (!confirm('Reset attempt count to 0?')) return;
+  attemptCount = 0;
+  localStorage.setItem('spaceRunnerAttempts', '0');
+});
+
+document.getElementById('modResetSkins').addEventListener('click', () => {
+  if (!confirm('Reset all purchased skins?')) return;
+  ownedSkins   = ['default'];
+  equippedSkin = 'default';
+  localStorage.setItem('spaceRunnerOwned', JSON.stringify(ownedSkins));
+  localStorage.setItem('spaceRunnerSkin', 'default');
+});
+
+document.getElementById('modResetAll').addEventListener('click', () => {
+  if (!confirm('Reset EVERYTHING? This cannot be undone.')) return;
+  ['spaceRunnerCoins','spaceRunnerBest','spaceRunnerAttempts',
+   'spaceRunnerOwned','spaceRunnerSkin','spaceRunnerUsername'].forEach(k =>
+    localStorage.removeItem(k));
+  for (const key of Object.keys(FEATURE_DEFAULTS)) {
+    localStorage.removeItem('spaceRunnerFeature_' + key);
+  }
+  location.reload();
+});
+
+document.getElementById('modSetCoins').addEventListener('click', () => {
+  const val = parseInt(document.getElementById('modCoinInput').value, 10);
+  if (isNaN(val) || val < 0) return;
+  totalCoins = val;
+  localStorage.setItem('spaceRunnerCoins', String(val));
+});
+
+document.getElementById('modBtn').addEventListener('click', openModPanel);
+document.getElementById('modCloseBtn').addEventListener('click', closeModPanel);
+
+
 // ===== BUTTON WIRING =====
 
 document.getElementById('playBtn').addEventListener('click', startGame);
@@ -1509,6 +1719,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 // ===== INIT =====
 
 (function init() {
+  loadFeatures();
   bestScore    = parseInt(localStorage.getItem('spaceRunnerBest')    || '0', 10);
   totalCoins   = parseInt(localStorage.getItem('spaceRunnerCoins')   || '0', 10);
   attemptCount = parseInt(localStorage.getItem('spaceRunnerAttempts') || '0', 10);
