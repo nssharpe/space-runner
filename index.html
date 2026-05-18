@@ -371,23 +371,26 @@ const CFG = {
 const PUSH_H       = 18;
 const DMG_SZ       = 44;
 const PLAYER_HIT_R = 11;
-const COIN_R       = 9;   // coin draw radius
-const COIN_HIT_R   = 14;  // generous collection radius
+const COIN_R       = 16;  // coin draw radius (1.75× original)
+const COIN_HIT_R   = 20;  // generous collection radius
+const BULLET_R     = 5;   // blaster projectile radius
 
 const POWERUP_R = 13;  // power-up draw/hit radius
 
 const POWERUPS = [
   { id: 'shield',  label: 'SHD', color: '#44AAFF', duration: 360 },  // 6s
-  { id: 'blaster', label: 'BLS', color: '#FF4444', duration: 300 },  // 5s
+  { id: 'blaster', label: 'BLS', color: '#FF4444', duration: 540 },  // 9s
   { id: 'x2coins', label: 'x2',  color: '#FFD700', duration: 480 },  // 8s
 ];
 
 const SKINS = [
-  { id: 'default', name: 'CYAN',    price: 0,   body: '#00DDDD', outline: '#FFFFFF', cockpit: '#FFFFFF', flameA: 'rgba(255,140,0,0.9)', flameB: 'rgba(255,60,0,0)' },
-  { id: 'ember',   name: 'EMBER',   price: 50,  body: '#FF5500', outline: '#FFD700', cockpit: '#FFEE88', flameA: 'rgba(255,220,0,0.9)', flameB: 'rgba(255,80,0,0)'  },
-  { id: 'phantom', name: 'PHANTOM', price: 100, body: '#9900FF', outline: '#FF44FF', cockpit: '#FF88FF', flameA: 'rgba(180,0,255,0.9)', flameB: 'rgba(60,0,100,0)'  },
-  { id: 'solar',   name: 'SOLAR',   price: 150, body: '#FFD700', outline: '#FFA500', cockpit: '#FFFAAA', flameA: 'rgba(255,255,80,0.9)', flameB: 'rgba(255,80,0,0)' },
-  { id: 'void',    name: 'VOID',    price: 200, body: '#334466', outline: '#8899FF', cockpit: '#AABBFF', flameA: 'rgba(100,150,255,0.9)', flameB: 'rgba(20,40,120,0)' },
+  { id: 'default', name: 'CYAN',    price: 0,   body: '#00DDDD', outline: '#FFFFFF', cockpit: '#FFFFFF', flameA: 'rgba(255,140,0,0.9)',  flameB: 'rgba(255,60,0,0)'   },
+  { id: 'ember',   name: 'EMBER',   price: 100, body: '#FF5500', outline: '#FFD700', cockpit: '#FFEE88', flameA: 'rgba(255,220,0,0.9)',  flameB: 'rgba(255,80,0,0)'   },
+  { id: 'phantom', name: 'PHANTOM', price: 200, body: '#9900FF', outline: '#FF44FF', cockpit: '#FF88FF', flameA: 'rgba(180,0,255,0.9)',  flameB: 'rgba(60,0,100,0)'   },
+  { id: 'solar',   name: 'SOLAR',   price: 300, body: '#FFD700', outline: '#FFA500', cockpit: '#FFFAAA', flameA: 'rgba(255,255,80,0.9)', flameB: 'rgba(255,80,0,0)'   },
+  { id: 'void',    name: 'VOID',    price: 400, body: '#334466', outline: '#8899FF', cockpit: '#AABBFF', flameA: 'rgba(100,150,255,0.9)',flameB: 'rgba(20,40,120,0)'  },
+  { id: 'nova',    name: 'NOVA',    price: 500, body: '#00FF88', outline: '#AAFFCC', cockpit: '#CCFFEE', flameA: 'rgba(0,255,120,0.9)',  flameB: 'rgba(0,80,40,0)'    },
+  { id: 'crimson', name: 'CRIMSON', price: 600, body: '#CC1133', outline: '#FF4466', cockpit: '#FFAACC', flameA: 'rgba(255,80,40,0.9)',  flameB: 'rgba(120,0,0,0)'    },
 ];
 
 
@@ -493,6 +496,7 @@ function resetGameState() {
     coins:         [],
     coinsThisRun:  0,
     powerups:      [],
+    bullets:       [],
     activePowerup: null,
     coinMultiplier: 1,
     stars:         generateStars(),
@@ -698,7 +702,13 @@ function spawnCoinRow() {
   for (let i = 0; i < count; i++) {
     const xFrac  = 0.08 + (i / (count - 1)) * 0.84;
     const jitter = (Math.random() - 0.5) * 0.06 * CANVAS_W;
-    S.coins.push({ fieldX: S.camera + xFrac * CANVAS_W + jitter, y: -COIN_R });
+    const fx     = S.camera + xFrac * CANVAS_W + jitter;
+    // Skip positions that overlap an obstacle near the top of the field
+    const blocked = S.obstacles.some(obs =>
+      obs.y > -150 && obs.y < 150 &&
+      fx + COIN_R > obs.fieldX && fx - COIN_R < obs.fieldX + obs.width
+    );
+    if (!blocked) S.coins.push({ fieldX: fx, y: -COIN_R });
   }
 }
 
@@ -744,6 +754,47 @@ function checkCoinCollection() {
   }
 }
 
+
+function drawBullets() {
+  for (const b of S.bullets) {
+    // Trail glow
+    ctx.beginPath();
+    ctx.arc(b.x, b.y + 6, BULLET_R + 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(68,170,255,0.18)';
+    ctx.fill();
+    // Bullet body
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, BULLET_R, 0, Math.PI * 2);
+    ctx.fillStyle = '#44AAFF';
+    ctx.fill();
+    ctx.strokeStyle = '#AADDFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function checkBulletCollisions() {
+  const deadBullets = new Set();
+  const deadObs     = new Set();
+  for (let bi = 0; bi < S.bullets.length; bi++) {
+    const b = S.bullets[bi];
+    for (let oi = 0; oi < S.obstacles.length; oi++) {
+      const obs = S.obstacles[oi];
+      if (obs.type !== 'damage') continue;
+      const sx  = obs.fieldX - S.camera;
+      const ocx = sx + obs.width  / 2;
+      const ocy = obs.y + obs.height / 2;
+      const obsR = Math.min(obs.width, obs.height) / 2 * 0.55;
+      const dx = b.x - ocx, dy = b.y - ocy;
+      if (dx * dx + dy * dy < (BULLET_R + obsR) * (BULLET_R + obsR)) {
+        deadBullets.add(bi);
+        deadObs.add(oi);
+      }
+    }
+  }
+  [...deadObs].sort((a, b) => b - a).forEach(i => S.obstacles.splice(i, 1));
+  [...deadBullets].sort((a, b) => b - a).forEach(i => S.bullets.splice(i, 1));
+}
 
 function spawnPowerup() {
   const def  = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
@@ -930,8 +981,8 @@ function update() {
     return pu.y < CANVAS_H + 40 && sx > -(CANVAS_W + 50) && sx < CANVAS_W * 2 + 50;
   });
 
-  // Spawn a power-up every ~400 frames (after a short warmup)
-  if (S.frameCount > 0 && S.frameCount % 400 === 0) spawnPowerup();
+  // Spawn a power-up every ~700 frames (rarer)
+  if (S.frameCount > 0 && S.frameCount % 700 === 0) spawnPowerup();
 
   // Tick active power-up countdown
   if (S.activePowerup) {
@@ -942,7 +993,15 @@ function update() {
     }
   }
 
+  // Blaster bullets: fire every 15 frames, move upward, cull off-screen
+  if (S.activePowerup?.id === 'blaster' && S.frameCount % 15 === 0) {
+    S.bullets.push({ x: PLAYER_X, y: S.player.y - CFG.player.h / 2 });
+  }
+  for (const b of S.bullets) b.y -= 10;
+  S.bullets = S.bullets.filter(b => b.y > -20);
+
   checkCollisions();
+  checkBulletCollisions();
   checkCoinCollection();
   checkPowerupCollection();
 
@@ -1062,6 +1121,7 @@ function render() {
 
   drawCoins();
   drawPowerups();
+  drawBullets();
 
   if (gamePhase === 'playing') {
     drawPlayer();
