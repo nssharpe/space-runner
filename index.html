@@ -354,21 +354,21 @@ const CFG = {
     iFrames: 90,
   },
   scroll: {
-    initial:   2,
+    initial:   2.5,
     increment: 0.0005,  // speed added per frame automatically
-    max:       12,
+    max:       14,
   },
   spawn: {
-    intervalInitial:   90,
-    intervalMin:       30,
-    intervalDecrement: 0.01,
+    intervalInitial:   80,
+    intervalMin:       25,
+    intervalDecrement: 0.012,
   },
   shift: { speed: 3 },
   stars:  { count: 80 },
   death:  { frames: 40 },
 };
 
-const PUSH_H       = 18;
+const PUSH_H       = 20;
 const DMG_SZ       = 44;
 const PLAYER_HIT_R = 11;
 const COIN_R       = 16;  // coin draw radius (1.75× original)
@@ -680,6 +680,19 @@ const PATTERNS = [
   [{ type: 'damage', xFrac: 0.02, wFrac: 0.18 },
    { type: 'push',   xFrac: 0.26, wFrac: 0.48 },
    { type: 'damage', xFrac: 0.80, wFrac: 0.18 }],
+  // four damage spread across screen
+  [{ type: 'damage', xFrac: 0.04, wFrac: 0.18 },
+   { type: 'damage', xFrac: 0.30, wFrac: 0.18 },
+   { type: 'damage', xFrac: 0.56, wFrac: 0.18 },
+   { type: 'damage', xFrac: 0.80, wFrac: 0.18 }],
+  // gauntlet: platform with damage on both sides close in
+  [{ type: 'damage', xFrac: 0.00, wFrac: 0.22 },
+   { type: 'push',   xFrac: 0.28, wFrac: 0.44 },
+   { type: 'damage', xFrac: 0.78, wFrac: 0.22 }],
+  // three damage zigzag
+  [{ type: 'damage', xFrac: 0.06, wFrac: 0.20 },
+   { type: 'damage', xFrac: 0.40, wFrac: 0.20 },
+   { type: 'damage', xFrac: 0.74, wFrac: 0.20 }],
 ];
 
 function spawnRow() {
@@ -688,7 +701,7 @@ function spawnRow() {
   // This guarantees obstacles exist no matter how far the player has shifted the field.
   for (const tileOffset of [-CANVAS_W, 0, CANVAS_W]) {
     for (const def of pattern) {
-      const w      = def.wFrac * CANVAS_W;
+      const w      = def.wFrac * CANVAS_W * (def.type === 'push' ? 1.1 : 1);
       const h      = def.type === 'push' ? PUSH_H : DMG_SZ;
       const fieldX = S.camera + tileOffset + def.xFrac * CANVAS_W;
       S.obstacles.push(mkObs(def.type, fieldX, -h, w, h));
@@ -1289,6 +1302,84 @@ function showNameModal(onConfirm) {
 
 // ===== SKIN SHOP =====
 
+function drawSkinPreview(canvasEl, skin) {
+  const cw  = canvasEl.width;
+  const ch  = canvasEl.height;
+  const c2  = canvasEl.getContext('2d');
+  const cx  = cw / 2;
+  const cy  = ch / 2 + 4;
+  const pw  = cw * 0.68;
+  const ph  = ch * 0.72;
+  c2.clearRect(0, 0, cw, ch);
+
+  // Background glow halo
+  const halo = c2.createRadialGradient(cx, cy, 0, cx, cy, cw * 0.55);
+  halo.addColorStop(0, skin.body + '44');
+  halo.addColorStop(1, 'transparent');
+  c2.fillStyle = halo;
+  c2.fillRect(0, 0, cw, ch);
+
+  c2.save();
+  c2.translate(cx, cy);
+
+  // Exhaust flame
+  const flameH = ph * 0.38;
+  const fg = c2.createLinearGradient(0, ph / 2, 0, ph / 2 + flameH);
+  fg.addColorStop(0, skin.flameA);
+  fg.addColorStop(1, skin.flameB);
+  c2.beginPath();
+  c2.moveTo(-pw / 4, ph / 2 - 2);
+  c2.lineTo( pw / 4, ph / 2 - 2);
+  c2.lineTo(0, ph / 2 + flameH);
+  c2.closePath();
+  c2.fillStyle = fg;
+  c2.fill();
+
+  // Ship body
+  c2.beginPath();
+  c2.moveTo(0,       -ph / 2);
+  c2.lineTo(-pw / 2,  ph / 2);
+  c2.lineTo(-pw / 6,  ph / 5);
+  c2.lineTo(0,        ph / 3);
+  c2.lineTo( pw / 6,  ph / 5);
+  c2.lineTo( pw / 2,  ph / 2);
+  c2.closePath();
+  c2.fillStyle   = skin.body;
+  c2.fill();
+  c2.strokeStyle = skin.outline;
+  c2.lineWidth   = 1.5;
+  c2.stroke();
+
+  // Wing accent lines
+  c2.strokeStyle = skin.outline + 'AA';
+  c2.lineWidth   = 0.8;
+  c2.beginPath();
+  c2.moveTo(-pw * 0.12, -ph * 0.05);
+  c2.lineTo(-pw * 0.38,  ph * 0.38);
+  c2.stroke();
+  c2.beginPath();
+  c2.moveTo( pw * 0.12, -ph * 0.05);
+  c2.lineTo( pw * 0.38,  ph * 0.38);
+  c2.stroke();
+
+  // Cockpit
+  c2.beginPath();
+  c2.arc(0, -ph / 7, pw / 8, 0, Math.PI * 2);
+  c2.fillStyle   = skin.cockpit;
+  c2.fill();
+  c2.strokeStyle = skin.outline + '88';
+  c2.lineWidth   = 0.8;
+  c2.stroke();
+
+  // Cockpit inner shine
+  c2.beginPath();
+  c2.arc(-pw / 24, -ph / 7 - pw / 20, pw / 22, 0, Math.PI * 2);
+  c2.fillStyle = '#ffffff55';
+  c2.fill();
+
+  c2.restore();
+}
+
 function renderShop() {
   document.getElementById('shopCoinCount').textContent = totalCoins;
   const grid = document.getElementById('skinGrid');
@@ -1301,27 +1392,39 @@ function renderShop() {
     const card = document.createElement('div');
     card.className = 'skin-card' + (equipped ? ' equipped' : owned ? ' owned' : '');
 
+    // Canvas ship preview
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width  = 56;
+    previewCanvas.height = 68;
+    previewCanvas.style.cssText = 'display:block; margin:0 auto 2px;';
+    card.appendChild(previewCanvas);
+    drawSkinPreview(previewCanvas, skin);
+
+    // Name + price
+    const nameEl = document.createElement('div');
+    nameEl.className = 'skin-name';
+    nameEl.textContent = skin.name;
+    card.appendChild(nameEl);
+
+    const priceEl = document.createElement('div');
+    priceEl.className = 'skin-price';
+    priceEl.textContent = skin.price === 0 ? 'FREE' : skin.price + ' coins';
+    card.appendChild(priceEl);
+
+    // Action button
     let btnLabel, btnDisabled, btnClass;
     if (equipped) {
-      btnLabel = 'ACTIVE'; btnDisabled = true; btnClass = 'active-btn';
+      btnLabel = 'ACTIVE'; btnDisabled = true;  btnClass = 'active-btn';
     } else if (owned) {
-      btnLabel = 'EQUIP'; btnDisabled = false; btnClass = '';
-    } else if (totalCoins >= skin.price) {
-      btnLabel = 'BUY'; btnDisabled = false; btnClass = '';
+      btnLabel = 'EQUIP';  btnDisabled = false; btnClass = '';
     } else {
-      btnLabel = 'BUY'; btnDisabled = true; btnClass = '';
+      btnLabel = 'BUY';    btnDisabled = totalCoins < skin.price; btnClass = '';
     }
-
-    card.innerHTML = `
-      <div class="skin-preview" style="background:${skin.body};
-        box-shadow: 0 0 6px ${skin.body}88;"></div>
-      <div class="skin-name">${skin.name}</div>
-      <div class="skin-price">${skin.price === 0 ? 'FREE' : skin.price + ' coins'}</div>
-      <button class="skin-btn ${btnClass}" ${btnDisabled ? 'disabled' : ''}
-        data-id="${skin.id}">${btnLabel}</button>
-    `;
-
-    card.querySelector('.skin-btn').addEventListener('click', () => {
+    const btn = document.createElement('button');
+    btn.className = 'skin-btn ' + btnClass;
+    btn.disabled  = btnDisabled;
+    btn.textContent = btnLabel;
+    btn.addEventListener('click', () => {
       if (owned) {
         equippedSkin = skin.id;
         localStorage.setItem('spaceRunnerSkin', equippedSkin);
@@ -1335,6 +1438,7 @@ function renderShop() {
       }
       renderShop();
     });
+    card.appendChild(btn);
 
     grid.appendChild(card);
   }
