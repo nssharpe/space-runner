@@ -406,12 +406,18 @@
     </div>
 
     <div class="mod-section">
-      <div class="mod-label">RESET</div>
+      <div class="mod-label">MY ACCOUNT</div>
       <button class="mod-reset-btn" id="modResetCoins">Reset coins → 0</button>
       <button class="mod-reset-btn" id="modResetScore">Reset best score → 0</button>
       <button class="mod-reset-btn" id="modResetAttempts">Reset attempt count → 0</button>
       <button class="mod-reset-btn" id="modResetSkins">Reset skins (keep default)</button>
-      <button class="mod-reset-btn danger" id="modResetAll">⚠ Reset everything</button>
+      <button class="mod-reset-btn danger" id="modResetAll">⚠ Wipe my account</button>
+    </div>
+
+    <div class="mod-section">
+      <div class="mod-label">ALL ACCOUNTS</div>
+      <button class="mod-reset-btn danger" id="modClearLeaderboard">⚠ Clear leaderboard</button>
+      <div id="modLbMsg" style="font-size:0.72em; color:#888; min-height:1em; font-family:'Courier New',monospace;"></div>
     </div>
 
     <div class="mod-section">
@@ -1662,7 +1668,7 @@ document.getElementById('modResetSkins').addEventListener('click', () => {
 });
 
 document.getElementById('modResetAll').addEventListener('click', () => {
-  if (!confirm('Reset EVERYTHING? This cannot be undone.')) return;
+  if (!confirm('Wipe your account? This cannot be undone.')) return;
   ['spaceRunnerCoins','spaceRunnerBest','spaceRunnerAttempts',
    'spaceRunnerOwned','spaceRunnerSkin','spaceRunnerUsername'].forEach(k =>
     localStorage.removeItem(k));
@@ -1670,6 +1676,22 @@ document.getElementById('modResetAll').addEventListener('click', () => {
     localStorage.removeItem('spaceRunnerFeature_' + key);
   }
   location.reload();
+});
+
+document.getElementById('modClearLeaderboard').addEventListener('click', async () => {
+  if (!confirm('Delete ALL leaderboard scores for every player? This cannot be undone.')) return;
+  const msg = document.getElementById('modLbMsg');
+  if (!db) { msg.textContent = 'Firebase not connected.'; msg.style.color = '#FF8888'; return; }
+  msg.textContent = 'Deleting…'; msg.style.color = '#888';
+  try {
+    const snap  = await db.collection('leaderboard').get();
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    msg.textContent = `✓ Cleared ${snap.size} score(s).`; msg.style.color = '#88FF88';
+  } catch (e) {
+    msg.textContent = 'Failed: ' + e.message; msg.style.color = '#FF8888';
+  }
 });
 
 document.getElementById('modSetCoins').addEventListener('click', () => {
