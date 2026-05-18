@@ -297,6 +297,7 @@
       <tbody id="lbBody"><tr><td colspan="3" style="color:#444;text-align:center">—</td></tr></tbody>
     </table>
     <button class="btn" id="retryBtn">TRY AGAIN</button>
+    <button class="btn muted" id="backToStartBtn">← MAIN MENU</button>
   </div>
 </div>
 
@@ -1485,6 +1486,7 @@ document.getElementById('changeNameBtn').addEventListener('click', () => {
 });
 
 document.getElementById('retryBtn').addEventListener('click', startGame);
+document.getElementById('backToStartBtn').addEventListener('click', () => setPhase('start'));
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
   if (sessionSubmitted) return;
