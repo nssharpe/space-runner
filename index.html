@@ -214,6 +214,7 @@
     <h1>SPACE<br>RUNNER</h1>
     <p id="pilotName" style="color:#00FFFF; font-size:0.9em">Pilot: —</p>
     <p id="bestDisplay" style="color:#FFD700; font-size:0.9em">Best: 0s</p>
+    <p id="coinsDisplay" style="color:#FFD700; font-size:0.9em">Coins: 0</p>
     <p>
       ↑ ↓ &nbsp; Move ship<br>
       ← → &nbsp; Shift asteroid field<br>
@@ -229,6 +230,7 @@
   <div id="gameOverScreen" class="screen">
     <h2>SHIP DESTROYED</h2>
     <div class="score-display" id="finalScore">0s</div>
+    <div id="coinsEarned" style="color:#FFD700; font-size:0.9em; letter-spacing:1px"></div>
     <div id="submitMsg"></div>
     <button class="btn" id="submitBtn">SUBMIT SCORE</button>
     <table id="leaderboardTable">
@@ -310,6 +312,8 @@ const CFG = {
 const PUSH_H       = 18;
 const DMG_SZ       = 44;
 const PLAYER_HIT_R = 11;
+const COIN_R       = 9;   // coin draw radius
+const COIN_HIT_R   = 14;  // generous collection radius
 
 
 // ===== FIREBASE =====
@@ -394,6 +398,7 @@ resizeCanvas();
 let gamePhase        = 'start';
 let username         = '';
 let bestScore        = 0;
+let totalCoins       = 0;   // all-time coin bank, persisted in localStorage
 let sessionSubmitted = false;
 let attemptCount     = 0;   // incremented on each death; triggers break every 5
 
@@ -408,6 +413,8 @@ function resetGameState() {
       iFrames:  0,
     },
     obstacles:     [],
+    coins:         [],
+    coinsThisRun:  0,
     stars:         generateStars(),
     scrollSpeed:   CFG.scroll.initial,
     spawnInterval: CFG.spawn.intervalInitial,
@@ -605,6 +612,57 @@ function spawnRow() {
 }
 
 
+function spawnCoinRow() {
+  const count = 3 + Math.floor(Math.random() * 3);  // 3–5 coins
+  for (let i = 0; i < count; i++) {
+    const xFrac  = 0.08 + (i / (count - 1)) * 0.84;
+    const jitter = (Math.random() - 0.5) * 0.06 * CANVAS_W;
+    S.coins.push({ fieldX: S.camera + xFrac * CANVAS_W + jitter, y: -COIN_R });
+  }
+}
+
+function drawCoins() {
+  for (const c of S.coins) {
+    const sx = c.fieldX - S.camera;
+    const grad = ctx.createRadialGradient(sx - 2, c.y - 2, 1, sx, c.y, COIN_R);
+    grad.addColorStop(0,   '#FFFFA0');
+    grad.addColorStop(0.5, '#FFD700');
+    grad.addColorStop(1,   '#B8860B');
+    ctx.beginPath();
+    ctx.arc(sx, c.y, COIN_R, 0, Math.PI * 2);
+    ctx.fillStyle   = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    ctx.fillStyle    = '#7A5800';
+    ctx.font         = 'bold 9px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', sx, c.y);
+  }
+}
+
+function checkCoinCollection() {
+  const toCollect = [];
+  for (let i = 0; i < S.coins.length; i++) {
+    const c  = S.coins[i];
+    const sx = c.fieldX - S.camera;
+    const dx = PLAYER_X - sx;
+    const dy = S.player.y - c.y;
+    if (dx * dx + dy * dy < (PLAYER_HIT_R + COIN_HIT_R) * (PLAYER_HIT_R + COIN_HIT_R)) {
+      toCollect.push(i);
+    }
+  }
+  for (let i = toCollect.length - 1; i >= 0; i--) {
+    S.coins.splice(toCollect[i], 1);
+    S.coinsThisRun++;
+    totalCoins++;
+    localStorage.setItem('spaceRunnerCoins', totalCoins);
+  }
+}
+
+
 // ===== COLLISION =====
 
 function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -707,6 +765,13 @@ function update() {
         && sx              < CANVAS_W * 2 + 100;
   });
 
+  // Coins scroll downward and get culled
+  for (const c of S.coins) c.y += S.scrollSpeed;
+  S.coins = S.coins.filter(c => {
+    const sx = c.fieldX - S.camera;
+    return c.y < CANVAS_H + 40 && sx > -(CANVAS_W + 50) && sx < CANVAS_W * 2 + 50;
+  });
+
   // Difficulty: tighten spawn interval
   S.spawnInterval = Math.max(
     CFG.spawn.intervalInitial - S.frameCount * CFG.spawn.intervalDecrement,
@@ -714,7 +779,11 @@ function update() {
   );
   if (S.frameCount % Math.round(S.spawnInterval) === 0) spawnRow();
 
+  // Coin rows spawn independently every ~150 frames
+  if (S.frameCount % 150 === 0) spawnCoinRow();
+
   checkCollisions();
+  checkCoinCollection();
 
   if (p.iFrames > 0) p.iFrames--;
 
@@ -756,6 +825,27 @@ function drawHUD() {
     ctx.fillStyle = i < p.hp ? '#FF3333' : '#2A2A2A';
     ctx.fillText('♥', 12 + i * 30, 14);
   }
+
+  // Coin counter (top right): small gold circle + count
+  const coinHudX = CANVAS_W - 14;
+  const coinHudY = 23;
+  ctx.beginPath();
+  ctx.arc(coinHudX - 30, coinHudY, 8, 0, Math.PI * 2);
+  ctx.fillStyle   = '#FFD700';
+  ctx.fill();
+  ctx.strokeStyle = '#B8860B';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+  ctx.fillStyle    = '#7A5800';
+  ctx.font         = 'bold 8px monospace';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('$', coinHudX - 30, coinHudY);
+  ctx.fillStyle    = '#FFD700';
+  ctx.font         = 'bold 18px monospace';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(S.coinsThisRun, coinHudX, coinHudY);
 }
 
 function drawDeathAnim() {
@@ -782,6 +872,8 @@ function render() {
   for (const obs of S.obstacles) {
     obs.type === 'push' ? drawPushObs(obs) : drawDamageObs(obs);
   }
+
+  drawCoins();
 
   if (gamePhase === 'playing') {
     drawPlayer();
@@ -824,8 +916,9 @@ function setPhase(phase) {
   document.getElementById('mobileControls').classList.toggle('active', phase === 'playing');
 
   if (phase === 'start') {
-    document.getElementById('pilotName').textContent = 'Pilot: ' + username;
-    document.getElementById('bestDisplay').textContent = 'Best: ' + bestScore + 's';
+    document.getElementById('pilotName').textContent    = 'Pilot: ' + username;
+    document.getElementById('bestDisplay').textContent  = 'Best: ' + bestScore + 's';
+    document.getElementById('coinsDisplay').textContent = 'Coins: ' + totalCoins;
     document.getElementById('startScreen').classList.add('active');
 
   } else if (phase === 'gameover') {
@@ -839,7 +932,9 @@ function setPhase(phase) {
       localStorage.setItem('spaceRunnerBest', bestScore);
     }
     sessionSubmitted = false;
-    document.getElementById('finalScore').textContent = finalSec + 's';
+    document.getElementById('finalScore').textContent   = finalSec + 's';
+    document.getElementById('coinsEarned').textContent  =
+      S.coinsThisRun > 0 ? '+ ' + S.coinsThisRun + ' coins  (total: ' + totalCoins + ')' : '';
     document.getElementById('submitMsg').textContent  = '';
     document.getElementById('submitBtn').disabled     = false;
     document.getElementById('gameOverScreen').classList.add('active');
@@ -1000,6 +1095,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 
 (function init() {
   bestScore    = parseInt(localStorage.getItem('spaceRunnerBest')    || '0', 10);
+  totalCoins   = parseInt(localStorage.getItem('spaceRunnerCoins')   || '0', 10);
   attemptCount = parseInt(localStorage.getItem('spaceRunnerAttempts') || '0', 10);
   const savedName = localStorage.getItem('spaceRunnerUsername');
 
