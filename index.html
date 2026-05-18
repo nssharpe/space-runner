@@ -374,6 +374,14 @@ const PLAYER_HIT_R = 11;
 const COIN_R       = 9;   // coin draw radius
 const COIN_HIT_R   = 14;  // generous collection radius
 
+const POWERUP_R = 13;  // power-up draw/hit radius
+
+const POWERUPS = [
+  { id: 'shield',  label: 'SHD', color: '#44AAFF', duration: 360 },  // 6s
+  { id: 'blaster', label: 'BLS', color: '#FF4444', duration: 300 },  // 5s
+  { id: 'x2coins', label: 'x2',  color: '#FFD700', duration: 480 },  // 8s
+];
+
 const SKINS = [
   { id: 'default', name: 'CYAN',    price: 0,   body: '#00DDDD', outline: '#FFFFFF', cockpit: '#FFFFFF', flameA: 'rgba(255,140,0,0.9)', flameB: 'rgba(255,60,0,0)' },
   { id: 'ember',   name: 'EMBER',   price: 50,  body: '#FF5500', outline: '#FFD700', cockpit: '#FFEE88', flameA: 'rgba(255,220,0,0.9)', flameB: 'rgba(255,80,0,0)'  },
@@ -484,6 +492,9 @@ function resetGameState() {
     obstacles:     [],
     coins:         [],
     coinsThisRun:  0,
+    powerups:      [],
+    activePowerup: null,
+    coinMultiplier: 1,
     stars:         generateStars(),
     scrollSpeed:   CFG.scroll.initial,
     spawnInterval: CFG.spawn.intervalInitial,
@@ -726,9 +737,62 @@ function checkCoinCollection() {
   }
   for (let i = toCollect.length - 1; i >= 0; i--) {
     S.coins.splice(toCollect[i], 1);
-    S.coinsThisRun++;
-    totalCoins++;
+    const earned = S.coinMultiplier;
+    S.coinsThisRun += earned;
+    totalCoins     += earned;
     localStorage.setItem('spaceRunnerCoins', totalCoins);
+  }
+}
+
+
+function spawnPowerup() {
+  const def  = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+  const xFrac = 0.15 + Math.random() * 0.70;
+  S.powerups.push({ id: def.id, fieldX: S.camera + xFrac * CANVAS_W, y: -POWERUP_R });
+}
+
+function drawPowerups() {
+  for (const pu of S.powerups) {
+    const sx  = pu.fieldX - S.camera;
+    const def = POWERUPS.find(x => x.id === pu.id);
+    // Outer glow
+    ctx.beginPath();
+    ctx.arc(sx, pu.y, POWERUP_R + 5, 0, Math.PI * 2);
+    ctx.fillStyle = def.color + '22';
+    ctx.fill();
+    // Circle body
+    ctx.beginPath();
+    ctx.arc(sx, pu.y, POWERUP_R, 0, Math.PI * 2);
+    ctx.fillStyle = def.color + '33';
+    ctx.fill();
+    ctx.strokeStyle = def.color;
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle    = def.color;
+    ctx.font         = 'bold 9px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(def.label, sx, pu.y);
+  }
+}
+
+function checkPowerupCollection() {
+  const toCollect = [];
+  for (let i = 0; i < S.powerups.length; i++) {
+    const pu = S.powerups[i];
+    const sx = pu.fieldX - S.camera;
+    const dx = PLAYER_X - sx;
+    const dy = S.player.y - pu.y;
+    if (dx * dx + dy * dy < (PLAYER_HIT_R + POWERUP_R) * (PLAYER_HIT_R + POWERUP_R)) {
+      toCollect.push(i);
+    }
+  }
+  for (let i = toCollect.length - 1; i >= 0; i--) {
+    const pu  = S.powerups.splice(toCollect[i], 1)[0];
+    const def = POWERUPS.find(x => x.id === pu.id);
+    S.activePowerup  = { id: pu.id, framesLeft: def.duration, totalFrames: def.duration };
+    S.coinMultiplier = pu.id === 'x2coins' ? 2 : 1;
   }
 }
 
@@ -767,6 +831,13 @@ function checkCollisions() {
       const dx   = PLAYER_X - ocx;
       const dy   = p.y      - ocy;
       if (dx * dx + dy * dy >= (PLAYER_HIT_R + obsR) * (PLAYER_HIT_R + obsR)) continue;
+
+      if (S.activePowerup?.id === 'shield') continue;
+
+      if (S.activePowerup?.id === 'blaster') {
+        toRemove.push(i);
+        continue;
+      }
 
       if (p.iFrames === 0) {
         p.hp     -= 1;
@@ -852,8 +923,28 @@ function update() {
   // Coin rows spawn independently every ~150 frames
   if (S.frameCount % 150 === 0) spawnCoinRow();
 
+  // Power-ups scroll and get culled
+  for (const pu of S.powerups) pu.y += S.scrollSpeed;
+  S.powerups = S.powerups.filter(pu => {
+    const sx = pu.fieldX - S.camera;
+    return pu.y < CANVAS_H + 40 && sx > -(CANVAS_W + 50) && sx < CANVAS_W * 2 + 50;
+  });
+
+  // Spawn a power-up every ~400 frames (after a short warmup)
+  if (S.frameCount > 0 && S.frameCount % 400 === 0) spawnPowerup();
+
+  // Tick active power-up countdown
+  if (S.activePowerup) {
+    S.activePowerup.framesLeft--;
+    if (S.activePowerup.framesLeft <= 0) {
+      S.activePowerup  = null;
+      S.coinMultiplier = 1;
+    }
+  }
+
   checkCollisions();
   checkCoinCollection();
+  checkPowerupCollection();
 
   if (p.iFrames > 0) p.iFrames--;
 
@@ -916,6 +1007,32 @@ function drawHUD() {
   ctx.textAlign    = 'right';
   ctx.textBaseline = 'middle';
   ctx.fillText(S.coinsThisRun, coinHudX, coinHudY);
+
+  // Active power-up bar (below score, top-center)
+  if (S.activePowerup) {
+    const ap  = S.activePowerup;
+    const def = POWERUPS.find(x => x.id === ap.id);
+    const t   = ap.framesLeft / ap.totalFrames;
+    const bw  = 110;
+    const bx  = CANVAS_W / 2 - bw / 2;
+    const by  = 46;
+
+    ctx.fillStyle = '#ffffff18';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, 6, 3);
+    ctx.fill();
+
+    ctx.fillStyle = def.color;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw * t, 6, 3);
+    ctx.fill();
+
+    ctx.fillStyle    = def.color;
+    ctx.font         = 'bold 11px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(def.label + ' ' + Math.ceil(ap.framesLeft / 60) + 's', CANVAS_W / 2, 56);
+  }
 }
 
 function drawDeathAnim() {
@@ -944,6 +1061,7 @@ function render() {
   }
 
   drawCoins();
+  drawPowerups();
 
   if (gamePhase === 'playing') {
     drawPlayer();
