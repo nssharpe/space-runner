@@ -163,6 +163,45 @@
     #usernameInput:focus { border-color: #00FFFF; }
 
     #usernameError { color: #FF5555; font-size: 0.8em; min-height: 1em; }
+
+    /* ── Mobile on-screen controls ── */
+    #mobileControls {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+      z-index: 50;
+      padding: 0 20px;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    #mobileControls.active { display: flex; }
+
+    .arrow-pad   { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+    .arrow-pad-h { display: flex; flex-direction: row;    gap: 10px; pointer-events: auto; }
+
+    .arrow-btn {
+      width: 68px;
+      height: 68px;
+      background: rgba(0, 255, 255, 0.10);
+      border: 2px solid rgba(0, 255, 255, 0.45);
+      border-radius: 14px;
+      color: rgba(0, 255, 255, 0.85);
+      font-size: 30px;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      transition: background 0.08s;
+    }
+    .arrow-btn:active { background: rgba(0, 255, 255, 0.28); }
   </style>
 </head>
 <body>
@@ -197,6 +236,18 @@
       <tbody id="lbBody"><tr><td colspan="3" style="color:#444;text-align:center">—</td></tr></tbody>
     </table>
     <button class="btn" id="retryBtn">TRY AGAIN</button>
+  </div>
+</div>
+
+<!-- Mobile Controls (shown only during gameplay on touch devices) -->
+<div id="mobileControls">
+  <div class="arrow-pad">
+    <button class="arrow-btn" id="btnUp">↑</button>
+    <button class="arrow-btn" id="btnDown">↓</button>
+  </div>
+  <div class="arrow-pad-h">
+    <button class="arrow-btn" id="btnLeft">←</button>
+    <button class="arrow-btn" id="btnRight">→</button>
   </div>
 </div>
 
@@ -770,6 +821,7 @@ function setPhase(phase) {
   gamePhase = phase;
   document.getElementById('startScreen').classList.remove('active');
   document.getElementById('gameOverScreen').classList.remove('active');
+  document.getElementById('mobileControls').classList.toggle('active', phase === 'playing');
 
   if (phase === 'start') {
     document.getElementById('pilotName').textContent = 'Pilot: ' + username;
@@ -887,6 +939,33 @@ function showNameModal(onConfirm) {
 }
 
 
+// ===== MOBILE CONTROLS =====
+
+function setupMobileControls() {
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (!isTouchDevice) return;
+
+  const mapping = {
+    btnUp:    'ArrowUp',
+    btnDown:  'ArrowDown',
+    btnLeft:  'ArrowLeft',
+    btnRight: 'ArrowRight',
+  };
+
+  for (const [id, key] of Object.entries(mapping)) {
+    const btn = document.getElementById(id);
+    const press   = e => { e.preventDefault(); S.keys[key] = true; };
+    const release = e => { e.preventDefault(); S.keys[key] = false; };
+    btn.addEventListener('touchstart',  press,   { passive: false });
+    btn.addEventListener('touchend',    release, { passive: false });
+    btn.addEventListener('touchcancel', release, { passive: false });
+    btn.addEventListener('mousedown',   press);
+    btn.addEventListener('mouseup',     release);
+    btn.addEventListener('mouseleave',  release);
+  }
+}
+
+
 // ===== BUTTON WIRING =====
 
 document.getElementById('playBtn').addEventListener('click', startGame);
@@ -925,6 +1004,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   const savedName = localStorage.getItem('spaceRunnerUsername');
 
   resetGameState();
+  setupMobileControls();
   gameLoop(); // start rendering immediately (stars animate on start screen)
 
   if (savedName) {
