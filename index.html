@@ -164,6 +164,56 @@
 
     #usernameError { color: #FF5555; font-size: 0.8em; min-height: 1em; }
 
+    /* ── Skin shop ── */
+    #shopScreen {
+      max-height: 88vh;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #00FFFF33 transparent;
+    }
+    #skinGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      width: 100%;
+    }
+    .skin-card {
+      background: rgba(0, 20, 50, 0.85);
+      border: 2px solid #1a3355;
+      border-radius: 10px;
+      padding: 12px 8px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      transition: border-color 0.15s;
+    }
+    .skin-card.owned    { border-color: #00FFFF44; }
+    .skin-card.equipped { border-color: #00FFFF; box-shadow: 0 0 10px #00FFFF33; }
+    .skin-preview {
+      width: 26px;
+      height: 34px;
+      clip-path: polygon(50% 0%, 0% 100%, 22% 72%, 50% 84%, 78% 72%, 100% 100%);
+    }
+    .skin-name  { color: #fff; font-size: 0.72em; letter-spacing: 2px; font-family: 'Courier New', monospace; }
+    .skin-price { color: #FFD700; font-size: 0.7em; min-height: 1em; }
+    .skin-btn {
+      padding: 5px 10px;
+      background: transparent;
+      border: 1px solid #00FFFF;
+      color: #00FFFF;
+      font-family: 'Courier New', monospace;
+      font-size: 0.7em;
+      cursor: pointer;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+      width: 100%;
+    }
+    .skin-btn:hover:not(:disabled) { background: #00FFFF; color: #000; }
+    .skin-btn:disabled { border-color: #333; color: #444; cursor: default; }
+    .skin-btn.active-btn { border-color: #00FFFF44; color: #00FFFF88; }
+
     /* ── Mobile on-screen controls ── */
     #mobileControls {
       display: none;
@@ -223,7 +273,16 @@
       <span style="color:#666">Don't fall off the bottom!</span>
     </p>
     <button class="btn" id="playBtn">LAUNCH</button>
+    <button class="btn" id="shopBtn">HANGAR</button>
     <button class="btn muted" id="changeNameBtn">change pilot name</button>
+  </div>
+
+  <!-- Shop Screen -->
+  <div id="shopScreen" class="screen">
+    <h1 style="font-size:1.6em">HANGAR</h1>
+    <p style="color:#FFD700; font-size:0.85em">Coins: <span id="shopCoinCount">0</span></p>
+    <div id="skinGrid"></div>
+    <button class="btn muted" id="shopBackBtn">← BACK</button>
   </div>
 
   <!-- Game Over Screen -->
@@ -315,6 +374,14 @@ const PLAYER_HIT_R = 11;
 const COIN_R       = 9;   // coin draw radius
 const COIN_HIT_R   = 14;  // generous collection radius
 
+const SKINS = [
+  { id: 'default', name: 'CYAN',    price: 0,   body: '#00DDDD', outline: '#FFFFFF', cockpit: '#FFFFFF', flameA: 'rgba(255,140,0,0.9)', flameB: 'rgba(255,60,0,0)' },
+  { id: 'ember',   name: 'EMBER',   price: 50,  body: '#FF5500', outline: '#FFD700', cockpit: '#FFEE88', flameA: 'rgba(255,220,0,0.9)', flameB: 'rgba(255,80,0,0)'  },
+  { id: 'phantom', name: 'PHANTOM', price: 100, body: '#9900FF', outline: '#FF44FF', cockpit: '#FF88FF', flameA: 'rgba(180,0,255,0.9)', flameB: 'rgba(60,0,100,0)'  },
+  { id: 'solar',   name: 'SOLAR',   price: 150, body: '#FFD700', outline: '#FFA500', cockpit: '#FFFAAA', flameA: 'rgba(255,255,80,0.9)', flameB: 'rgba(255,80,0,0)' },
+  { id: 'void',    name: 'VOID',    price: 200, body: '#334466', outline: '#8899FF', cockpit: '#AABBFF', flameA: 'rgba(100,150,255,0.9)', flameB: 'rgba(20,40,120,0)' },
+];
+
 
 // ===== FIREBASE =====
 
@@ -399,6 +466,8 @@ let gamePhase        = 'start';
 let username         = '';
 let bestScore        = 0;
 let totalCoins       = 0;   // all-time coin bank, persisted in localStorage
+let ownedSkins       = ['default'];
+let equippedSkin     = 'default';
 let sessionSubmitted = false;
 let attemptCount     = 0;   // incremented on each death; triggers break every 5
 
@@ -460,9 +529,10 @@ function drawStars() {
 // ===== PLAYER DRAWING =====
 
 function drawPlayer() {
-  const p  = S.player;
-  const pw = CFG.player.w;
-  const ph = CFG.player.h;
+  const p    = S.player;
+  const pw   = CFG.player.w;
+  const ph   = CFG.player.h;
+  const skin = SKINS.find(s => s.id === equippedSkin) || SKINS[0];
 
   // Flicker while invincible: hide every other 4-frame block
   if (p.iFrames > 0 && Math.floor(p.iFrames / 4) % 2 === 1) return;
@@ -473,8 +543,8 @@ function drawPlayer() {
   // Exhaust flame (alternates size for animation)
   const flameH = (S.frameCount % 8 < 4) ? 15 : 9;
   const grad = ctx.createLinearGradient(0, ph / 2, 0, ph / 2 + flameH);
-  grad.addColorStop(0, 'rgba(255,140,0,0.9)');
-  grad.addColorStop(1, 'rgba(255,60,0,0)');
+  grad.addColorStop(0, skin.flameA);
+  grad.addColorStop(1, skin.flameB);
   ctx.beginPath();
   ctx.moveTo(-pw / 4, ph / 2 - 3);
   ctx.lineTo( pw / 4, ph / 2 - 3);
@@ -485,23 +555,23 @@ function drawPlayer() {
 
   // Ship body: triangle pointing up with notched tail
   ctx.beginPath();
-  ctx.moveTo(0,       -ph / 2);       // nose tip
-  ctx.lineTo(-pw / 2,  ph / 2);       // left wing tip
-  ctx.lineTo(-pw / 6,  ph / 5);       // left tail notch
-  ctx.lineTo(0,        ph / 3);        // center tail
-  ctx.lineTo( pw / 6,  ph / 5);       // right tail notch
-  ctx.lineTo( pw / 2,  ph / 2);       // right wing tip
+  ctx.moveTo(0,       -ph / 2);
+  ctx.lineTo(-pw / 2,  ph / 2);
+  ctx.lineTo(-pw / 6,  ph / 5);
+  ctx.lineTo(0,        ph / 3);
+  ctx.lineTo( pw / 6,  ph / 5);
+  ctx.lineTo( pw / 2,  ph / 2);
   ctx.closePath();
-  ctx.fillStyle   = '#00DDDD';
+  ctx.fillStyle   = skin.body;
   ctx.fill();
-  ctx.strokeStyle = '#FFFFFF';
+  ctx.strokeStyle = skin.outline;
   ctx.lineWidth   = 1.5;
   ctx.stroke();
 
   // Cockpit
   ctx.beginPath();
   ctx.arc(0, -ph / 7, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = skin.cockpit;
   ctx.fill();
 
   ctx.restore();
@@ -913,9 +983,14 @@ function setPhase(phase) {
   gamePhase = phase;
   document.getElementById('startScreen').classList.remove('active');
   document.getElementById('gameOverScreen').classList.remove('active');
+  document.getElementById('shopScreen').classList.remove('active');
   document.getElementById('mobileControls').classList.toggle('active', phase === 'playing');
 
-  if (phase === 'start') {
+  if (phase === 'shop') {
+    renderShop();
+    document.getElementById('shopScreen').classList.add('active');
+
+  } else if (phase === 'start') {
     document.getElementById('pilotName').textContent    = 'Pilot: ' + username;
     document.getElementById('bestDisplay').textContent  = 'Best: ' + bestScore + 's';
     document.getElementById('coinsDisplay').textContent = 'Coins: ' + totalCoins;
@@ -1034,6 +1109,60 @@ function showNameModal(onConfirm) {
 }
 
 
+// ===== SKIN SHOP =====
+
+function renderShop() {
+  document.getElementById('shopCoinCount').textContent = totalCoins;
+  const grid = document.getElementById('skinGrid');
+  grid.innerHTML = '';
+
+  for (const skin of SKINS) {
+    const owned    = ownedSkins.includes(skin.id);
+    const equipped = equippedSkin === skin.id;
+
+    const card = document.createElement('div');
+    card.className = 'skin-card' + (equipped ? ' equipped' : owned ? ' owned' : '');
+
+    let btnLabel, btnDisabled, btnClass;
+    if (equipped) {
+      btnLabel = 'ACTIVE'; btnDisabled = true; btnClass = 'active-btn';
+    } else if (owned) {
+      btnLabel = 'EQUIP'; btnDisabled = false; btnClass = '';
+    } else if (totalCoins >= skin.price) {
+      btnLabel = 'BUY'; btnDisabled = false; btnClass = '';
+    } else {
+      btnLabel = 'BUY'; btnDisabled = true; btnClass = '';
+    }
+
+    card.innerHTML = `
+      <div class="skin-preview" style="background:${skin.body};
+        box-shadow: 0 0 6px ${skin.body}88;"></div>
+      <div class="skin-name">${skin.name}</div>
+      <div class="skin-price">${skin.price === 0 ? 'FREE' : skin.price + ' coins'}</div>
+      <button class="skin-btn ${btnClass}" ${btnDisabled ? 'disabled' : ''}
+        data-id="${skin.id}">${btnLabel}</button>
+    `;
+
+    card.querySelector('.skin-btn').addEventListener('click', () => {
+      if (owned) {
+        equippedSkin = skin.id;
+        localStorage.setItem('spaceRunnerSkin', equippedSkin);
+      } else if (totalCoins >= skin.price) {
+        totalCoins -= skin.price;
+        localStorage.setItem('spaceRunnerCoins', totalCoins);
+        ownedSkins.push(skin.id);
+        localStorage.setItem('spaceRunnerOwned', JSON.stringify(ownedSkins));
+        equippedSkin = skin.id;
+        localStorage.setItem('spaceRunnerSkin', equippedSkin);
+      }
+      renderShop();
+    });
+
+    grid.appendChild(card);
+  }
+}
+
+
 // ===== MOBILE CONTROLS =====
 
 function setupMobileControls() {
@@ -1064,6 +1193,8 @@ function setupMobileControls() {
 // ===== BUTTON WIRING =====
 
 document.getElementById('playBtn').addEventListener('click', startGame);
+document.getElementById('shopBtn').addEventListener('click', () => setPhase('shop'));
+document.getElementById('shopBackBtn').addEventListener('click', () => setPhase('start'));
 
 document.getElementById('changeNameBtn').addEventListener('click', () => {
   showNameModal(() => {
@@ -1097,6 +1228,12 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   bestScore    = parseInt(localStorage.getItem('spaceRunnerBest')    || '0', 10);
   totalCoins   = parseInt(localStorage.getItem('spaceRunnerCoins')   || '0', 10);
   attemptCount = parseInt(localStorage.getItem('spaceRunnerAttempts') || '0', 10);
+  equippedSkin = localStorage.getItem('spaceRunnerSkin') || 'default';
+  try {
+    const saved = localStorage.getItem('spaceRunnerOwned');
+    if (saved) ownedSkins = JSON.parse(saved);
+    if (!ownedSkins.includes('default')) ownedSkins.unshift('default');
+  } catch (e) { ownedSkins = ['default']; }
   const savedName = localStorage.getItem('spaceRunnerUsername');
 
   resetGameState();
